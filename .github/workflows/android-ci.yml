@@ -2,9 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches: [ "develop", "main" ]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [ "develop", "main" ]
+    branches: [ "main", "develop" ]
 
 jobs:
   build:
@@ -14,7 +14,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. JDK 17 세팅
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -22,15 +21,12 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      # 2. Gradle 실행 권한 부여
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # 3. 디버그용 APK 빌드 수행
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
-      # 4. 빌드된 APK 파일을 GitHub Actions 결과물로 업로드
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
