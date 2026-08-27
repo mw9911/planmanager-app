@@ -11,6 +11,8 @@ data class LoginRequest(
 )
 
 data class AuthResponse(
-    val token: String?,
+    // 기존 val token: String? 을 아래 2개로 분리
+    val accessToken: String?,
+    val refreshToken: String?,
     val message: String
 )

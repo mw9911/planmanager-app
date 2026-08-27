@@ -36,8 +36,15 @@ class AuthViewModel @Inject constructor(
                 val response = authApi.login(LoginRequest(email, password))
                 if (response.isSuccessful) {
                     // 💡 핵심: 통신 가로채기(Interceptor)가 읽을 수 있도록 TokenManager(DataStore)에 저장!
-                    response.body()?.token?.let { token ->
-                        tokenManager.saveAccessToken(token)
+                    response.body()?.let { authResponse ->
+                        // 💡 1. Access Token 추출 및 저장
+                        authResponse.accessToken?.let {
+                            tokenManager.saveAccessToken(it)
+                        }
+                        // 💡 2. Refresh Token 추출 및 저장
+                        authResponse.refreshToken?.let {
+                            tokenManager.saveRefreshToken(it)
+                        }
                     }
                     _uiState.update { it.copy(isLoading = false, isSuccess = true) }
                 } else {

@@ -22,18 +22,31 @@ class TokenManager @Inject constructor(
 ) {
     companion object {
         private val ACCESS_TOKEN_KEY = stringPreferencesKey("access_token")
+        // 💡 Refresh Token을 위한 고유 키 추가
+        private val REFRESH_TOKEN_KEY = stringPreferencesKey("refresh_token")
     }
 
-    // 1. 토큰 저장
+    // 1. Access 토큰 저장
     suspend fun saveAccessToken(token: String) {
         context.dataStore.edit { preferences ->
             preferences[ACCESS_TOKEN_KEY] = token
         }
     }
 
+    // 💡 1-1. Refresh 토큰 저장 (추가됨)
+    suspend fun saveRefreshToken(token: String) {
+        context.dataStore.edit { preferences ->
+            preferences[REFRESH_TOKEN_KEY] = token
+        }
+    }
+
     // 2. 비동기 환경용 토큰 스트림 (ViewModel 등에서 사용)
     val accessTokenFlow: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[ACCESS_TOKEN_KEY]
+    }
+
+    val refreshTokenFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[REFRESH_TOKEN_KEY]
     }
 
     // 3. 동기 환경용 단일 토큰 조회 (Interceptor에서 사용)
@@ -43,10 +56,19 @@ class TokenManager @Inject constructor(
         }.first()
     }
 
-    // 4. 로그아웃 시 토큰 삭제
-    suspend fun clearToken() {
+    // 💡 3-1. 동기 환경용 Refresh 단일 토큰 조회 (Authenticator에서 사용됨)
+    suspend fun getRefreshToken(): String? {
+        return context.dataStore.data.map { preferences ->
+            preferences[REFRESH_TOKEN_KEY]
+        }.first()
+    }
+
+    // 💡 4. 로그아웃 또는 401(만료) 시 전체 토큰 일괄 물리 삭제 (메서드명 clearTokens로 변경됨)
+    suspend fun clearTokens() {
         context.dataStore.edit { preferences ->
+            // 특정 키만 지우거나 .clear()로 prefs 전체를 초기화할 수 있습니다.
             preferences.remove(ACCESS_TOKEN_KEY)
+            preferences.remove(REFRESH_TOKEN_KEY)
         }
     }
 }

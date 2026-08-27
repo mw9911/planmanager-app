@@ -14,7 +14,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PlanManagerApp"
         android:name=".PlanManagerApplication"
-        android:usesCleartextTraffic="true"> <!-- 2. 로컬 HTTP(평문) 통신 강제 허용 -->
+        android:usesCleartextTraffic="true"
+
+
+        > <!-- 2. 로컬 HTTP(평문) 통신 강제 허용 -->
 
         <activity
             android:name=".MainActivity"

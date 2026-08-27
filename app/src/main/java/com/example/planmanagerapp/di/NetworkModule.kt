@@ -5,6 +5,7 @@ import com.example.planmanagerapp.data.remote.api.AuthInterceptor
 import com.example.planmanagerapp.data.remote.api.CalendarApiService
 import com.example.planmanagerapp.data.remote.api.PlanApiService
 import com.example.planmanagerapp.data.remote.api.RoutineApiService // 💡 임포트 추가
+import com.example.planmanagerapp.data.remote.api.TokenAuthenticator
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -19,18 +20,20 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    private const val BASE_URL = "http://192.168.4.6:8080/"
+    const val BASE_URL = "https://planmanager-api.duckdns.org/"
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient {
+    fun provideOkHttpClient(
+        authInterceptor: AuthInterceptor,
+        tokenAuthenticator: TokenAuthenticator // 💡 Authenticator 주입 추가
+    ): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
         return OkHttpClient.Builder()
-            // 💡 1. authInterceptor를 먼저 배치하여 토큰을 헤더에 답니다.
             .addInterceptor(authInterceptor)
-            // 💡 2. 그 다음 loggingInterceptor를 배치해야 Logcat에 토큰이 찍힙니다.
+            .authenticator(tokenAuthenticator) // 💡 401 에러 발생 시 캐치하는 Authenticator 장착
             .addInterceptor(loggingInterceptor)
             .build()
     }
