@@ -77,3 +77,15 @@ fun scheduleMidnightSync(context: Context) {
         syncWorkRequest
     )
 }
+fun scheduleDailyReminder(context: Context) {
+    // 💡 주기적 작업 요청 (예: 12시간마다 미완료 항목 체크)
+    val reminderWorkRequest = PeriodicWorkRequestBuilder<ReminderWorker>(12, TimeUnit.HOURS)
+        .build()
+
+    // 동일한 작업이 중복 등록되지 않도록 KEEP 정책 사용
+    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        "DailyPlanReminder",
+        ExistingPeriodicWorkPolicy.KEEP,
+        reminderWorkRequest
+    )
+}

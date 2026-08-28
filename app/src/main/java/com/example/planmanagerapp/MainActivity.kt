@@ -35,6 +35,8 @@ import com.example.planmanagerapp.ui.routine.RoutineViewModel
 import com.example.planmanagerapp.worker.scheduleMidnightSync
 import dagger.hilt.android.AndroidEntryPoint
 import com.example.planmanagerapp.ui.calendar.CalendarScreen
+import com.example.planmanagerapp.worker.scheduleDailyReminder
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -49,7 +51,7 @@ class MainActivity : ComponentActivity() {
         createNotificationChannel()
         askNotificationPermission()
         scheduleMidnightSync(this)
-
+        scheduleDailyReminder(this)
         setContent {
             MaterialTheme {
                 PlanManagerApp()
@@ -83,12 +85,33 @@ class MainActivity : ComponentActivity() {
 fun PlanManagerApp() {
     val navController = rememberNavController()
 
+    // authViewModel을 TopBar에서도 쓸 수 있도록 Scaffold 바깥(최상단)으로 호이스팅
+    val authViewModel: AuthViewModel = hiltViewModel()
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
     val showBottomBar = currentDestination?.route in listOf("routine", "plan")
 
     Scaffold(
+        topBar = {
+            // 로그인 화면(auth)이 아닐 때만 로그아웃 버튼 표시
+            // 로그인 화면(auth)이 아닐 때만 로그아웃 버튼 표시
+            // 로그인 화면(auth)이 아닐 때만 로그아웃 버튼 표시
+            if (currentDestination?.route != "auth") {
+                Button(onClick = {
+                    authViewModel.logout(onLogoutComplete = {
+                        // 💡 뷰모델 상태 리셋 + 토큰 파기가 끝난 후 깨끗하게 네비게이션 이동
+                        navController.navigate("auth") {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    })
+                }) {
+                    Text("로그아웃")
+                }
+            }
+        },
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {
@@ -126,7 +149,6 @@ fun PlanManagerApp() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("auth") {
-                val authViewModel: AuthViewModel = hiltViewModel()
                 AuthScreen(
                     viewModel = authViewModel,
                     onLoginSuccess = {
@@ -146,14 +168,12 @@ fun PlanManagerApp() {
                 val planViewModel: PlanViewModel = hiltViewModel()
                 PlanScreen(
                     viewModel = planViewModel,
-                    // 💡 에러 해결: 캘린더 아이콘 클릭 시 동작할 네비게이션 정의
                     onNavigateToCalendar = {
                         navController.navigate("calendar")
                     }
                 )
             }
 
-            // 💡 캘린더 화면으로 이동하기 위한 신규 목적지(라우트) 추가
             composable("calendar") {
                 CalendarScreen()
             }

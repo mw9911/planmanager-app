@@ -1,24 +1,29 @@
 package com.example.planmanagerapp.data.remote.api
 
+import android.util.Log
 import com.example.planmanagerapp.data.local.TokenManager
-import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class AuthInterceptor @Inject constructor(
     private val tokenManager: TokenManager
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        // OkHttp Interceptor는 워커 스레드에서 실행되므로 runBlocking 사용이 안전함
-        val token = runBlocking { tokenManager.getAccessToken() }
+        // 💡 runBlocking을 제거하고 SharedPreferences에서 즉각적으로 토큰을 꺼내옴
+        val token = tokenManager.getAccessToken()
+
+        Log.d("AuthInterceptor", "Loaded Token: $token")
 
         val requestBuilder = chain.request().newBuilder()
 
-        // 토큰이 존재할 경우에만 Authorization 헤더 추가
         if (!token.isNullOrBlank()) {
             requestBuilder.addHeader("Authorization", "Bearer $token")
+        } else {
+            Log.e("AuthInterceptor", "Token is NULL or BLANK! Request sent without Auth header.")
         }
 
         return chain.proceed(requestBuilder.build())

@@ -12,3 +12,9 @@ data class PlanResponse(
     val planDate: String, // ⬅️ 서버의 planDate 필드와 이름이 정확히 일치합니다.
     val isCompleted: Boolean
 )
+
+data class PlanSyncRequest(
+    val title: String,
+    val planDate: String,
+    val isCompleted: Boolean
+)
