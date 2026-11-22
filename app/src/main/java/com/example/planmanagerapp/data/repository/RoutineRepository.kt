@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import retrofit2.HttpException
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 class RoutineRepository @Inject constructor(
@@ -57,9 +58,26 @@ class RoutineRepository @Inject constructor(
     }
 
     suspend fun toggleItem(itemId: Long, currentStatus: Boolean) {
+        // 같은 항목의 요청이 아직 끝나지 않았으면 이번 입력은 무시한다. 같은 version이 두 번 가서 409가 나는 것을 막는다.
+        if (!togglingIds.add(itemId)) return
+        try {
+            processToggle(itemId, currentStatus)
+        } finally {
+            togglingIds.remove(itemId)
+        }
+    }
+
+    private suspend fun processToggle(itemId: Long, currentStatus: Boolean) {
         // 1. 로컬 즉시 반영 (낙관적 업데이트)
         routineDao.updateItemCompletion(itemId, !currentStatus)
         PlanWidget.updateWidget(context)
+
+        // 아직 보내지 못한 같은 항목의 토글이 있으면 두 번 누른 셈이라, 둘 다 없애고 끝낸다.
+        routineDao.findPendingToggle(itemId)?.let {
+            routineDao.deleteSyncAction(it)
+            return
+        }
+
         val localVersion = routineDao.getItemVersion(itemId)
 
         val response = try {
@@ -105,7 +123,8 @@ class RoutineRepository @Inject constructor(
         val response = apiService.toggleItem(action.targetId, ToggleRequest(action.expectedVersion))
         return when {
             response.isSuccessful -> {
-                response.body()?.let { routineDao.updateItemVersion(action.targetId, it.version) }
+                // 서버가 돌려준 상태로 맞춘다. 보내는 사이에 화면에서 다시 눌렀어도 서버와 같아진다.
+                response.body()?.let { routineDao.updateItemCompletionAndVersion(action.targetId, it.isCompleted, it.version) }
                 routineDao.deleteSyncAction(action)
                 ResendResult.DONE
             }
@@ -187,5 +206,10 @@ class RoutineRepository @Inject constructor(
             ExistingWorkPolicy.REPLACE,
             request
         )
+    }
+
+    companion object {
+        // 저장소가 주입될 때마다 새로 만들어지므로, 진행 중인 토글은 프로세스 전체에서 공유한다.
+        private val togglingIds: MutableSet<Long> = ConcurrentHashMap.newKeySet()
     }
 }

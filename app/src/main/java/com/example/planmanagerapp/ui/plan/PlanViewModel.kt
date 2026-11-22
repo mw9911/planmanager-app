@@ -64,9 +64,10 @@ class PlanViewModel @Inject constructor(
             try {
                 repository.togglePlan(id, currentStatus)
             } catch (e: VersionConflictException) {
-                _uiState.update { it.copy(errorMessage = "다른 기기에서 먼저 바뀌어 최신 상태로 맞췄어요") }
+                // 다른 기기의 변경뿐 아니라 자정 초기화로 version이 오른 경우도 여기로 온다.
+                _uiState.update { it.copy(errorMessage = "이미 바뀐 계획이라 최신 상태로 다시 불러왔어요") }
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = "네트워크 오류 복구됨") }
+                _uiState.update { it.copy(errorMessage = "상태 변경 실패") }
             }
         }
     }

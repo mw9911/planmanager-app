@@ -85,9 +85,8 @@ class RoutineViewModel @Inject constructor(
             try {
                 repository.toggleItem(itemId, currentStatus)
             } catch (e: VersionConflictException) {
-                _uiState.update { it.copy(errorMessage = "다른 기기에서 먼저 바뀌어 최신 상태로 맞췄어요") }
-            } catch (e: IOException) {
-                _uiState.update { it.copy(errorMessage = "오프라인 상태에서는 변경사항을 저장할 수 없습니다.") }
+                // 다른 기기의 변경뿐 아니라 자정 초기화로 version이 오른 경우도 여기로 온다.
+                _uiState.update { it.copy(errorMessage = "이미 바뀐 항목이라 최신 상태로 다시 불러왔어요") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "상태 변경 실패") }
             }

@@ -60,6 +60,10 @@ interface RoutineDao {
     @Query("SELECT * FROM pending_sync_actions")
     suspend fun getAllPendingActions(): List<PendingSyncActionEntity>
 
+    // 아직 보내지 못한 같은 항목의 토글
+    @Query("SELECT * FROM pending_sync_actions WHERE actionType = 'TOGGLE_ITEM' AND targetId = :itemId LIMIT 1")
+    suspend fun findPendingToggle(itemId: Long): PendingSyncActionEntity?
+
     @Delete
     suspend fun deleteSyncAction(action: PendingSyncActionEntity)
 }

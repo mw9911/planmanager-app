@@ -48,9 +48,17 @@ interface PlanDao {
     @Query("UPDATE plans SET version = :version WHERE id = :id")
     suspend fun updateVersion(id: Long, version: Long)
 
+    // 오프라인에서 만들어 아직 서버에 없는 계획이면 false
+    @Query("SELECT is_synced FROM plans WHERE id = :id")
+    suspend fun isSynced(id: Long): Boolean?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlanSyncAction(action: PendingSyncActionEntity)
 
     @Delete
     suspend fun deletePlanSyncAction(action: PendingSyncActionEntity)
+
+    // 아직 보내지 못한 같은 계획의 토글
+    @Query("SELECT * FROM pending_sync_actions WHERE actionType = 'TOGGLE_PLAN' AND targetId = :id LIMIT 1")
+    suspend fun findPendingToggle(id: Long): PendingSyncActionEntity?
 }
