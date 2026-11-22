@@ -26,7 +26,9 @@ object DatabaseModule {
             AppDatabase::class.java,
             "plan_manager_db"
         )
-            .fallbackToDestructiveMigration() // 💡 DB 버전 변경 시 기존 데이터를 날리고 새 스키마로 덮어씌움 (개발 단계에서 권장)
+            .addMigrations(AppDatabase.MIGRATION_4_5)
+            // Migration 경로가 없을 때(1~3 → 5 등)만 초기화된다. 4 → 5는 위 Migration이 쓰인다.
+            .fallbackToDestructiveMigration()
             .build()
     }
 
@@ -35,7 +37,6 @@ object DatabaseModule {
         return database.planDao()
     }
 
-    // 💡 새로 추가: RoutineDao 의존성 제공
     @Provides
     fun provideRoutineDao(database: AppDatabase): RoutineDao {
         return database.routineDao()
@@ -52,7 +53,7 @@ object DatabaseModule {
         // 2. 키와 값 모두 암호화하는 SharedPreferences 객체 반환
         return EncryptedSharedPreferences.create(
             context,
-            "secret_auth_prefs", // 💡 기존과 다른 새로운 암호화 전용 파일명 사용
+            "secret_auth_prefs", // 암호화 전용 파일명
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM

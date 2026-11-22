@@ -3,6 +3,7 @@ package com.example.planmanagerapp.ui.plan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.planmanagerapp.data.repository.PlanRepository
+import com.example.planmanagerapp.data.repository.VersionConflictException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -17,7 +18,7 @@ class PlanViewModel @Inject constructor(
     val uiState: StateFlow<PlanUiState> = _uiState.asStateFlow()
 
     init {
-        // 💡 특정 날짜가 아닌 전체 스트림 구독
+        // 특정 날짜가 아닌 전체 스트림 구독
         viewModelScope.launch {
             repository.getAllPlansStream().collect { plans ->
                 _uiState.update { it.copy(plans = plans) }
@@ -62,6 +63,8 @@ class PlanViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 repository.togglePlan(id, currentStatus)
+            } catch (e: VersionConflictException) {
+                _uiState.update { it.copy(errorMessage = "다른 기기에서 먼저 바뀌어 최신 상태로 맞췄어요") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "네트워크 오류 복구됨") }
             }

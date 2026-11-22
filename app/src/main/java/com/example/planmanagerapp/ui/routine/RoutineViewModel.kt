@@ -3,6 +3,7 @@ package com.example.planmanagerapp.ui.routine
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.planmanagerapp.data.repository.RoutineRepository
+import com.example.planmanagerapp.data.repository.VersionConflictException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -41,10 +42,8 @@ class RoutineViewModel @Inject constructor(
                 _uiState.update { it.copy(selectedDate = intent.date) }
                 fetchRoutines()
             }
-            // 💡 생성/삭제 로직에 현재 선택된 날짜(currentDate)를 함께 넘겨줍니다.
             is RoutineIntent.CreateGroup -> createGroup(intent.title, intent.intervalDays, currentDate)
             is RoutineIntent.AddItem -> addItem(intent.groupId, intent.title, currentDate)
-            // 💡 토글 시 현재 상태를 넘겨받아 낙관적 업데이트에 사용합니다. (화면 및 Intent 데이터클래스 수정 필요)
             is RoutineIntent.ToggleItem -> toggleItem(intent.itemId, intent.currentStatus)
             is RoutineIntent.DeleteGroup -> deleteGroup(intent.groupId, currentDate)
             is RoutineIntent.DeleteItem -> deleteItem(intent.itemId, currentDate)
@@ -57,7 +56,7 @@ class RoutineViewModel @Inject constructor(
             try {
                 repository.fetchAndCacheRoutines(_uiState.value.selectedDate)
             } catch (e: IOException) {
-                // 💡 인터넷 없음(네트워크 에러) 감지 시 안내 메시지 처리
+                // 네트워크 오류: 로컬 캐시를 그대로 보여 준다.
                 _uiState.update { it.copy(errorMessage = "오프라인 모드입니다. 로컬 캐시 데이터를 표시합니다.") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "조회 에러: ${e.message}") }
@@ -85,8 +84,9 @@ class RoutineViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 repository.toggleItem(itemId, currentStatus)
+            } catch (e: VersionConflictException) {
+                _uiState.update { it.copy(errorMessage = "다른 기기에서 먼저 바뀌어 최신 상태로 맞췄어요") }
             } catch (e: IOException) {
-                // 💡 오프라인 상태에서 토글 시도 시 안내
                 _uiState.update { it.copy(errorMessage = "오프라인 상태에서는 변경사항을 저장할 수 없습니다.") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "상태 변경 실패") }

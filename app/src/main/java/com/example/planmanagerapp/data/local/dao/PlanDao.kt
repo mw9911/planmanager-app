@@ -1,13 +1,13 @@
 package com.example.planmanagerapp.data.local.dao
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.example.planmanagerapp.data.local.entity.PendingSyncActionEntity
 import com.example.planmanagerapp.data.local.entity.PlanEntity
 import kotlinx.coroutines.flow.Flow
-
-// 💡 삭제된 Plan 임포트 제거 완료
 
 @Dao
 interface PlanDao {
@@ -35,10 +35,22 @@ interface PlanDao {
     @Query("UPDATE plans SET is_synced = 1 WHERE id IN (:ids)")
     suspend fun markAsSynced(ids: List<Long>)
 
-    // 💡 에러 해결: ReminderWorker를 위한 미완료 조회 쿼리 신규 추가
+    // ReminderWorker에서 사용
     @Query("SELECT * FROM plans WHERE isCompleted = 0 AND planDate = :date")
     suspend fun getUncompletedPlansByDate(date: String): List<PlanEntity>
 
+    @Query("SELECT version FROM plans WHERE id = :id")
+    suspend fun getVersion(id: Long): Long?
+
+    @Query("UPDATE plans SET isCompleted = :isCompleted, version = :version WHERE id = :id")
+    suspend fun updateCompletionAndVersion(id: Long, isCompleted: Boolean, version: Long)
+
+    @Query("UPDATE plans SET version = :version WHERE id = :id")
+    suspend fun updateVersion(id: Long, version: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPlanSyncAction(action: com.example.planmanagerapp.data.local.entity.PendingSyncActionEntity)
+    suspend fun insertPlanSyncAction(action: PendingSyncActionEntity)
+
+    @Delete
+    suspend fun deletePlanSyncAction(action: PendingSyncActionEntity)
 }

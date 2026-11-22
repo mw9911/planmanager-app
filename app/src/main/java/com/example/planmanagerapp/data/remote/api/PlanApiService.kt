@@ -2,8 +2,9 @@ package com.example.planmanagerapp.data.remote.api
 
 import com.example.planmanagerapp.data.remote.dto.PlanCreateRequest
 import com.example.planmanagerapp.data.remote.dto.PlanResponse
-// 💡 PlanSyncRequest DTO 임포트 (본인의 DTO 파일명/경로와 일치하는지 확인하십시오)
 import com.example.planmanagerapp.data.remote.dto.PlanSyncRequest
+import com.example.planmanagerapp.data.remote.dto.ToggleRequest
+import com.example.planmanagerapp.data.remote.dto.ToggleResponse
 import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.*
@@ -15,13 +16,17 @@ interface PlanApiService {
     @POST("/api/v1/plans")
     suspend fun createPlan(@Body request: PlanCreateRequest): Response<PlanResponse>
 
+    // 409·404도 예외 없이 Response로 돌아오므로 호출하는 쪽에서 code()를 확인한다.
     @PATCH("/api/v1/plans/{planId}/toggle")
-    suspend fun togglePlan(@Path("planId") planId: Long): Response<Unit>
+    suspend fun togglePlan(
+        @Path("planId") planId: Long,
+        @Body request: ToggleRequest
+    ): Response<ToggleResponse>
 
     @DELETE("/api/v1/plans/{planId}")
     suspend fun deletePlan(@Path("planId") planId: Long): Response<Unit>
 
-    // 💡 에러 해결: PlanSyncWorker가 사용할 동기식 일괄 동기화 API 호출 정의
+    // PlanSyncWorker에서 쓰는 동기 호출
     @POST("/api/v1/plans/sync")
     fun syncPlansSync(@Body requests: List<PlanSyncRequest>): Call<Void>
 }

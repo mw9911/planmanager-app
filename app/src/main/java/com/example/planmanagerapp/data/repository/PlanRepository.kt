@@ -1,6 +1,7 @@
 package com.example.planmanagerapp.data.repository
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -13,6 +14,7 @@ import com.example.planmanagerapp.data.local.entity.toDto
 import com.example.planmanagerapp.data.remote.api.PlanApiService
 import com.example.planmanagerapp.data.remote.dto.PlanCreateRequest
 import com.example.planmanagerapp.data.remote.dto.PlanResponse
+import com.example.planmanagerapp.data.remote.dto.ToggleRequest
 import com.example.planmanagerapp.ui.widget.PlanWidget
 import com.example.planmanagerapp.worker.NetworkSyncWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -36,13 +38,31 @@ class PlanRepository @Inject constructor(
     suspend fun refreshAllPlans() {
         val remotePlans = apiService.getAllPlans()
         val entities = remotePlans.map {
-            PlanEntity(id = it.id, title = it.title, planDate = it.planDate, isCompleted = it.isCompleted, isSynced = true)
+            PlanEntity(
+                id = it.id,
+                title = it.title,
+                planDate = it.planDate,
+                isCompleted = it.isCompleted,
+                isSynced = true,
+                version = it.version
+            )
         }
         planDao.insertPlans(entities)
         PlanWidget.updateWidget(context)
     }
 
-    // 💡 재사용을 위한 헬퍼 함수: 인터넷 연결 시 워커 예약
+    // 409·404 뒤에 최신 목록을 받는다. 실패해도 호출한 흐름은 그대로 진행한다.
+    suspend fun tryRefreshAllPlans() {
+        try {
+            refreshAllPlans()
+        } catch (e: IOException) {
+            Log.w("Sync", "계획 목록 갱신 실패: ${e.message}")
+        } catch (e: HttpException) {
+            Log.w("Sync", "계획 목록 갱신 실패: HTTP ${e.code()}")
+        }
+    }
+
+    // 인터넷이 연결되면 NetworkSyncWorker가 큐를 다시 보낸다.
     private fun scheduleNetworkSyncWorker() {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -68,7 +88,8 @@ class PlanRepository @Inject constructor(
                     title = responseBody.title,
                     planDate = responseBody.planDate,
                     isCompleted = responseBody.isCompleted,
-                    isSynced = true
+                    isSynced = true,
+                    version = responseBody.version
                 )
                 planDao.insertPlan(entity)
                 PlanWidget.updateWidget(context)
@@ -79,37 +100,67 @@ class PlanRepository @Inject constructor(
             val tempEntity = PlanEntity(title = title, planDate = date, isCompleted = false, isSynced = false)
             planDao.insertPlan(tempEntity)
             PlanWidget.updateWidget(context)
-            // 💡 오프라인 큐 생성 후 워커 예약
             scheduleNetworkSyncWorker()
         }
     }
 
     suspend fun togglePlan(id: Long, currentStatus: Boolean) {
+        // 1. 로컬 먼저 반영 (낙관적 업데이트)
         planDao.updateCompletion(id, !currentStatus)
         PlanWidget.updateWidget(context)
+        val localVersion = planDao.getVersion(id)
 
-        try {
-            apiService.togglePlan(id)
+        val response = try {
+            apiService.togglePlan(id, ToggleRequest(localVersion))
         } catch (e: IOException) {
+            // 2. 연결 실패: 그때의 version과 함께 큐에 넣는다.
             planDao.insertPlanSyncAction(
-                PendingSyncActionEntity(actionType = "TOGGLE_PLAN", targetId = id)
+                PendingSyncActionEntity(actionType = "TOGGLE_PLAN", targetId = id, expectedVersion = localVersion)
             )
-            // 💡 큐 적재 후 워커 예약
             scheduleNetworkSyncWorker()
-        } catch (e: HttpException) {
-            if (e.code() == 409) {
-                planDao.updateCompletion(id, currentStatus)
-                PlanWidget.updateWidget(context)
-                throw IllegalStateException("데이터가 다른 기기에서 변경되었습니다. 최신화가 필요합니다.", e)
-            } else {
-                planDao.updateCompletion(id, currentStatus)
-                PlanWidget.updateWidget(context)
-                throw e
-            }
+            return
         } catch (e: Exception) {
-            planDao.updateCompletion(id, currentStatus)
-            PlanWidget.updateWidget(context)
+            revertPlan(id, currentStatus)
             throw e
+        }
+
+        // 3. 응답 코드에 따라 로컬을 맞춘다.
+        when {
+            response.isSuccessful -> {
+                response.body()?.let { planDao.updateCompletionAndVersion(id, it.isCompleted, it.version) }
+                PlanWidget.updateWidget(context)
+            }
+            response.code() == 409 -> {
+                revertPlan(id, currentStatus)
+                tryRefreshAllPlans()
+                throw VersionConflictException()
+            }
+            response.code() == 404 -> {
+                planDao.deletePlan(id)
+                PlanWidget.updateWidget(context)
+                tryRefreshAllPlans()
+            }
+            else -> {
+                revertPlan(id, currentStatus)
+                throw HttpException(response)
+            }
+        }
+    }
+
+    /** 큐에 쌓인 TOGGLE_PLAN을 expectedVersion과 함께 다시 보낸다. IOException은 호출한 쪽으로 던진다. */
+    suspend fun resendToggle(action: PendingSyncActionEntity): ResendResult {
+        val response = apiService.togglePlan(action.targetId, ToggleRequest(action.expectedVersion))
+        return when {
+            response.isSuccessful -> {
+                response.body()?.let { planDao.updateVersion(action.targetId, it.version) }
+                planDao.deletePlanSyncAction(action)
+                ResendResult.DONE
+            }
+            response.code() == 409 || response.code() == 404 -> {
+                planDao.deletePlanSyncAction(action)
+                ResendResult.STALE
+            }
+            else -> ResendResult.RETRY
         }
     }
 
@@ -123,8 +174,12 @@ class PlanRepository @Inject constructor(
             planDao.insertPlanSyncAction(
                 PendingSyncActionEntity(actionType = "DELETE_PLAN", targetId = id)
             )
-            // 💡 큐 적재 후 워커 예약
             scheduleNetworkSyncWorker()
         }
+    }
+
+    private suspend fun revertPlan(id: Long, currentStatus: Boolean) {
+        planDao.updateCompletion(id, currentStatus)
+        PlanWidget.updateWidget(context)
     }
 }

@@ -15,7 +15,8 @@ data class RoutineItemLocalEntity(
     @PrimaryKey val id: Long,
     val groupId: Long,
     val title: String,
-    val isCompleted: Boolean
+    val isCompleted: Boolean,
+    @ColumnInfo(defaultValue = "0") val version: Long = 0
 )
 
 // 1:N 관계를 매핑하는 조인 클래스

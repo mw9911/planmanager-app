@@ -23,6 +23,22 @@ interface RoutineDao {
     @Query("UPDATE routine_items SET isCompleted = :isCompleted WHERE id = :itemId")
     suspend fun updateItemCompletion(itemId: Long, isCompleted: Boolean)
 
+    @Query("UPDATE routine_items SET isCompleted = :isCompleted, version = :version WHERE id = :itemId")
+    suspend fun updateItemCompletionAndVersion(itemId: Long, isCompleted: Boolean, version: Long)
+
+    @Query("UPDATE routine_items SET version = :version WHERE id = :itemId")
+    suspend fun updateItemVersion(itemId: Long, version: Long)
+
+    @Query("SELECT version FROM routine_items WHERE id = :itemId")
+    suspend fun getItemVersion(itemId: Long): Long?
+
+    // 항목이 속한 그룹의 날짜 (충돌 뒤 어느 날짜를 다시 받을지 정할 때 사용)
+    @Query("SELECT date FROM routine_groups WHERE id = (SELECT groupId FROM routine_items WHERE id = :itemId)")
+    suspend fun getItemDate(itemId: Long): String?
+
+    @Query("DELETE FROM routine_items WHERE id = :itemId")
+    suspend fun deleteItem(itemId: Long)
+
     @Query("DELETE FROM routine_groups WHERE date = :date")
     suspend fun clearGroupsByDate(date: String)
 
@@ -36,7 +52,8 @@ interface RoutineDao {
         insertGroups(groups)
         insertItems(items)
     }
-    // 💡 아래 3개 메서드를 RoutineDao 내부에 추가하십시오.
+
+    // 오프라인 동기화 큐
     @Insert
     suspend fun insertSyncAction(action: PendingSyncActionEntity)
 

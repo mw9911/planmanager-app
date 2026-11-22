@@ -7,18 +7,28 @@ import com.example.planmanagerapp.data.remote.dto.PlanResponse
 
 @Entity(tableName = "plans")
 data class PlanEntity(
-    // 💡 오프라인 로컬 생성을 지원하기 위해 autoGenerate = true 적용
+    // 오프라인에서 만든 계획은 로컬에서 id를 발급한다.
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val title: String,
     val planDate: String,
     val isCompleted: Boolean = false,
 
-    // 💡 Room 컴파일러가 찾지 못했던 오프라인 식별 플래그를 정식 통합
+    // 서버 반영 여부 (오프라인에서 만들면 false)
     @ColumnInfo(name = "is_synced")
-    var isSynced: Boolean = true
+    var isSynced: Boolean = true,
+
+    // 서버에서 마지막으로 받은 version. 토글 요청에 담아 보낸다.
+    @ColumnInfo(defaultValue = "0")
+    val version: Long = 0
 )
 
 // Mapping Extensions
-fun PlanEntity.toDto() = PlanResponse(id, title, planDate, isCompleted)
-fun PlanResponse.toEntity() = PlanEntity(id = id, title = title, planDate = planDate, isCompleted = isCompleted)
+fun PlanEntity.toDto() = PlanResponse(id, title, planDate, isCompleted, version)
+fun PlanResponse.toEntity() = PlanEntity(
+    id = id,
+    title = title,
+    planDate = planDate,
+    isCompleted = isCompleted,
+    version = version
+)

@@ -10,5 +10,6 @@ data class RoutineGroupResponse(
 data class RoutineItemResponse(
     val id: Long,
     val title: String,
-    val isCompleted: Boolean
+    val isCompleted: Boolean,
+    val version: Long = 0
 )
