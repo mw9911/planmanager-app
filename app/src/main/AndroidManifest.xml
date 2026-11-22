@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.example.planmanagerapp">
 
     <!-- 1. 인터넷 통신 권한 추가 -->
@@ -14,10 +15,19 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PlanManagerApp"
         android:name=".PlanManagerApplication"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="true"> <!-- 2. 로컬 HTTP(평문) 통신 강제 허용 -->
 
-
-        > <!-- 2. 로컬 HTTP(평문) 통신 강제 허용 -->
+        <!-- 💡 3. 기본 WorkManager 초기화 로직 강제 차단 (이전에 누락되었던 핵심 코드) -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
 
         <activity
             android:name=".MainActivity"
@@ -27,5 +37,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name=".ui.widget.PlanWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/plan_widget_info" />
+        </receiver>
     </application>
 </manifest>

@@ -1,8 +1,6 @@
 package com.example.planmanagerapp.data.local
 
-import android.content.Context
 import android.content.SharedPreferences
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,10 +9,11 @@ import javax.inject.Singleton
 
 @Singleton
 class TokenManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    // 💡 1. Context 대신 SharedPreferences를 바로 주입받습니다.
+    // Hilt가 DatabaseModule에서 만든 EncryptedSharedPreferences를 여기에 꽂아줍니다.
+    private val prefs: SharedPreferences
 ) {
-    // 💡 DataStore 대신 동기(Sync) 방식의 SharedPreferences 적용
-    private val prefs: SharedPreferences = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+    // 💡 2. 직접 getSharedPreferences를 호출하던 줄은 삭제되었습니다.
 
     // UI 관찰용 Flow 상태 관리
     private val _accessTokenFlow = MutableStateFlow(getAccessToken())

@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -168,52 +169,88 @@ fun DayCell(
     items: List<CalendarItemResponse>,
     onClick: () -> Unit
 ) {
+    val totalItems = items.size
+    val completedItems = items.count { it.isCompleted }
+    val completionRate = if (totalItems > 0) completedItems.toFloat() / totalItems.toFloat() else 0f
+
     val backgroundColor = if (isSelected) Color(0xFFE3F2FD) else Color.Transparent
     val textColor = when {
         isSelected -> Color(0xFF1976D2)
         isToday -> Color(0xFF4CAF50)
-        date.dayOfWeek.value == 7 -> Color.Red // 일요일
-        date.dayOfWeek.value == 6 -> Color.Blue // 토요일
+        date.dayOfWeek.value == 7 -> Color.Red
+        date.dayOfWeek.value == 6 -> Color.Blue
         else -> Color.Black
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .aspectRatio(1f)
             .padding(2.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)
-            .clickable(onClick = onClick)
-            .padding(4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = date.dayOfMonth.toString(),
-            color = textColor,
-            fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Normal,
-            fontSize = 14.sp
-        )
+        // 1. 원형 게이지 바 (배경)
+        if (totalItems > 0) {
+            CircularProgressIndicator(
+                progress = { completionRate },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp),
+                color = if (completionRate == 1f) Color(0xFF4CAF50) else Color(0xFF2196F3),
+                trackColor = Color(0xFFEEEEEE),
+                strokeWidth = 3.dp
+            )
+        }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // 💡 아이템 상태 표시 인디케이터 (Plan = 파랑, Routine = 초록)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
+        // 💡 2. 게이지 안쪽 중앙 정렬 (날짜 + 점)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            items.take(3).forEach { item ->
-                val dotColor = if (item.type == "PLAN") Color(0xFF2196F3) else Color(0xFF4CAF50)
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .padding(horizontal = 1.dp)
-                        .clip(CircleShape)
-                        .background(if (item.isCompleted) dotColor.copy(alpha = 0.3f) else dotColor)
-                )
+            Text(
+                text = date.dayOfMonth.toString(),
+                color = textColor,
+                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Normal,
+                fontSize = 14.sp
+            )
+
+            // 💡 누락되었던 점(Dot) 로직 복구 (원형 게이지 안에 들어가도록 크기를 4.dp로 미세 조정)
+            if (totalItems > 0) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items.take(3).forEach { item ->
+                        val dotColor = if (item.type == "PLAN") Color(0xFF2196F3) else Color(0xFF4CAF50)
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 1.dp)
+                                .size(4.dp) // 기존 6.dp에서 4.dp로 축소
+                                .clip(CircleShape)
+                                .background(if (item.isCompleted) dotColor.copy(alpha = 0.3f) else dotColor)
+                        )
+                    }
+                    if (items.size > 3) {
+                        Text("+", fontSize = 8.sp, color = Color.Gray, modifier = Modifier.padding(start = 1.dp))
+                    }
+                }
             }
-            if (items.size > 3) {
-                Text("+", fontSize = 8.sp, color = Color.Gray, modifier = Modifier.padding(start = 1.dp))
-            }
+        }
+
+        // 3. 완료 도장(Stamp)
+        if (totalItems > 0 && completionRate == 1f) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = "완료됨",
+                tint = Color(0xFF4CAF50),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = (-2).dp, y = (-2).dp)
+                    .size(14.dp)
+            )
         }
     }
 }

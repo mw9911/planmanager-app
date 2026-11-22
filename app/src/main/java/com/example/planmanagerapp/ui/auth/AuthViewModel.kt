@@ -3,7 +3,8 @@ package com.example.planmanagerapp.ui.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.planmanagerapp.data.local.AppDatabase
-import com.example.planmanagerapp.data.local.TokenManager // 💡 TokenManager 임포트 필수
+import com.example.planmanagerapp.data.local.AuthEventManager
+import com.example.planmanagerapp.data.local.TokenManager
 import com.example.planmanagerapp.data.remote.api.AuthApiService
 import com.example.planmanagerapp.data.remote.dto.LoginRequest
 import com.example.planmanagerapp.data.remote.dto.SignUpRequest
@@ -20,45 +21,59 @@ import javax.inject.Inject
 data class AuthUiState(
     val isLoading: Boolean = false,
     val isSuccess: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val isCheckingAuth: Boolean = true,
+    val isAuthenticated: Boolean = false
 )
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val authApi: AuthApiService,
-    private val tokenManager: TokenManager, // 💡 SessionManager가 아닌 TokenManager를 주입
-    private val appDatabase: AppDatabase // 💡 Hilt로 RoomDB 인스턴스 주입
-    ) : ViewModel() {
+    private val tokenManager: TokenManager,
+    private val appDatabase: AppDatabase,
+    private val authEventManager: AuthEventManager
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+
+    val sessionExpiredEvent = authEventManager.sessionExpiredEvent
+
+    init {
+        checkAutoLogin()
+    }
+
+    private fun checkAutoLogin() {
+        viewModelScope.launch {
+            try {
+                val token = tokenManager.getAccessToken()
+
+                if (!token.isNullOrBlank()) {
+                    _uiState.update { it.copy(isCheckingAuth = false, isAuthenticated = true, isSuccess = true) }
+                } else {
+                    _uiState.update { it.copy(isCheckingAuth = false, isAuthenticated = false) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isCheckingAuth = false, isAuthenticated = false) }
+            }
+        }
+    }
 
     fun login(email: String, password: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val response = authApi.login(LoginRequest(email, password))
+                // 💡 1. DTO 필드명 규격에 맞게 loginId로 전달
+                val response = authApi.login(LoginRequest(loginId = email, password = password))
                 if (response.isSuccessful) {
                     val authResponse = response.body()
-
-                    // 💡 응답 바디가 null이 아닌지, 토큰이 제대로 파싱되었는지 최후의 팩트 체크
-                    android.util.Log.d("AuthTest", "DTO Parsed AccessToken: ${authResponse?.accessToken}")
-
                     if (authResponse != null && !authResponse.accessToken.isNullOrBlank()) {
-                        // 확실하게 DataStore에 저장 (suspend 함수이므로 코루틴 내 순차 실행 보장)
                         tokenManager.saveAccessToken(authResponse.accessToken)
+                        authResponse.refreshToken?.let { tokenManager.saveRefreshToken(it) }
 
-                        authResponse.refreshToken?.let {
-                            tokenManager.saveRefreshToken(it)
-                        }
-
-                        // 💡 저장 직후, DataStore에 정말 들어갔는지 즉시 검증
-                        val verifyToken = tokenManager.getAccessToken()
-                        android.util.Log.d("AuthTest", "Verified Saved Token: $verifyToken")
-
-                        _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                        _uiState.update { it.copy(isLoading = false, isSuccess = true, isAuthenticated = true) }
                     } else {
-                        _uiState.update { it.copy(isLoading = false, errorMessage = "로그인은 성공했으나 서버가 토큰을 주지 않았습니다.") }
+                        _uiState.update { it.copy(isLoading = false, errorMessage = "서버가 토큰을 반환하지 않았습니다.") }
                     }
                 } else {
                     _uiState.update { it.copy(isLoading = false, errorMessage = "로그인 실패: ${response.code()}") }
@@ -73,7 +88,10 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val response = authApi.signUp(SignUpRequest(email, password))
+                // 💡 2. 임시 username 생성 (이메일의 @ 앞부분 추출) 후 파라미터 전달
+                val tempUsername = email.substringBefore("@")
+                val response = authApi.signUp(SignUpRequest(username = tempUsername, email = email, password = password))
+
                 if (response.isSuccessful) {
                     _uiState.update { it.copy(isLoading = false, errorMessage = "회원가입 완료. 로그인해주세요.") }
                 } else {
@@ -84,9 +102,9 @@ class AuthViewModel @Inject constructor(
             }
         }
     }
+
     fun logout(onLogoutComplete: () -> Unit) {
-        // 💡 핵심 팩트: 이전 로그인 성공 상태를 false로 초기화하여 '자동 로그인 루프'를 원천 차단
-        _uiState.update { AuthUiState() }
+        _uiState.update { AuthUiState(isCheckingAuth = false, isAuthenticated = false) }
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -95,11 +113,14 @@ class AuthViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.e("AuthTest", "DB 초기화 에러: ${e.message}")
             } finally {
-                // DB 삭제 및 토큰 파기가 완료되면 안전하게 화면 이동 트리거
                 withContext(Dispatchers.Main) {
                     onLogoutComplete()
                 }
             }
         }
+    }
+
+    fun resetState() {
+        _uiState.update { AuthUiState(isCheckingAuth = false, isAuthenticated = false) }
     }
 }

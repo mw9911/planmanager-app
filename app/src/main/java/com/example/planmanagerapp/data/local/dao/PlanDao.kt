@@ -38,4 +38,7 @@ interface PlanDao {
     // 💡 에러 해결: ReminderWorker를 위한 미완료 조회 쿼리 신규 추가
     @Query("SELECT * FROM plans WHERE isCompleted = 0 AND planDate = :date")
     suspend fun getUncompletedPlansByDate(date: String): List<PlanEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlanSyncAction(action: com.example.planmanagerapp.data.local.entity.PendingSyncActionEntity)
 }

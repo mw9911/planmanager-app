@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.planmanagerapp.data.repository.RoutineRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -18,19 +20,34 @@ class RoutineViewModel @Inject constructor(
     val uiState: StateFlow<RoutineUiState> = _uiState.asStateFlow()
 
     init {
-        fetchRoutines()
+        // 날짜가 바뀔 때마다 해당 날짜의 DB 스트림을 자동으로 구독
+        viewModelScope.launch {
+            _uiState.map { it.selectedDate }
+                .distinctUntilChanged()
+                .collect { date ->
+                    repository.getRoutinesStream(date).collect { groups ->
+                        _uiState.update { it.copy(groups = groups) }
+                    }
+                }
+        }
+        fetchRoutines() // 초기 데이터 서버 동기화
     }
 
     fun handleIntent(intent: RoutineIntent) {
+        val currentDate = _uiState.value.selectedDate
         when (intent) {
             is RoutineIntent.FetchRoutines -> fetchRoutines()
-            is RoutineIntent.CreateGroup -> createGroup(intent.title, intent.intervalDays)
-            is RoutineIntent.AddItem -> addItem(intent.groupId, intent.title)
-            is RoutineIntent.ToggleItem -> toggleItem(intent.itemId)
             is RoutineIntent.ChangeDate -> {
                 _uiState.update { it.copy(selectedDate = intent.date) }
                 fetchRoutines()
             }
+            // 💡 생성/삭제 로직에 현재 선택된 날짜(currentDate)를 함께 넘겨줍니다.
+            is RoutineIntent.CreateGroup -> createGroup(intent.title, intent.intervalDays, currentDate)
+            is RoutineIntent.AddItem -> addItem(intent.groupId, intent.title, currentDate)
+            // 💡 토글 시 현재 상태를 넘겨받아 낙관적 업데이트에 사용합니다. (화면 및 Intent 데이터클래스 수정 필요)
+            is RoutineIntent.ToggleItem -> toggleItem(intent.itemId, intent.currentStatus)
+            is RoutineIntent.DeleteGroup -> deleteGroup(intent.groupId, currentDate)
+            is RoutineIntent.DeleteItem -> deleteItem(intent.itemId, currentDate)
         }
     }
 
@@ -38,44 +55,56 @@ class RoutineViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val groups = repository.getRoutineGroups(_uiState.value.selectedDate)
-                _uiState.update { it.copy(groups = groups, isLoading = false) }
+                repository.fetchAndCacheRoutines(_uiState.value.selectedDate)
+            } catch (e: IOException) {
+                // 💡 인터넷 없음(네트워크 에러) 감지 시 안내 메시지 처리
+                _uiState.update { it.copy(errorMessage = "오프라인 모드입니다. 로컬 캐시 데이터를 표시합니다.") }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = "조회 실패: ${e.message}") }
+                _uiState.update { it.copy(errorMessage = "조회 에러: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
     }
 
-    private fun createGroup(title: String, intervalDays: Int) {
+    private fun createGroup(title: String, intervalDays: Int, date: String) {
+        viewModelScope.launch {
+            try { repository.createGroup(title, intervalDays, date) }
+            catch (e: Exception) { _uiState.update { it.copy(errorMessage = e.message) } }
+        }
+    }
+
+    private fun addItem(groupId: Long, title: String, date: String) {
+        viewModelScope.launch {
+            try { repository.addItem(groupId, title, date) }
+            catch (e: Exception) { _uiState.update { it.copy(errorMessage = e.message) } }
+        }
+    }
+
+    private fun toggleItem(itemId: Long, currentStatus: Boolean) {
         viewModelScope.launch {
             try {
-                repository.createGroup(title, intervalDays)
-                fetchRoutines() // 성공 시 화면 즉시 갱신
+                repository.toggleItem(itemId, currentStatus)
+            } catch (e: IOException) {
+                // 💡 오프라인 상태에서 토글 시도 시 안내
+                _uiState.update { it.copy(errorMessage = "오프라인 상태에서는 변경사항을 저장할 수 없습니다.") }
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = e.message) }
+                _uiState.update { it.copy(errorMessage = "상태 변경 실패") }
             }
         }
     }
 
-    private fun addItem(groupId: Long, title: String) {
+    private fun deleteGroup(groupId: Long, date: String) {
         viewModelScope.launch {
-            try {
-                repository.addItem(groupId, title)
-                fetchRoutines()
-            } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = e.message) }
-            }
+            try { repository.deleteGroup(groupId, date) }
+            catch (e: Exception) { _uiState.update { it.copy(errorMessage = "그룹 삭제 실패: ${e.message}") } }
         }
     }
 
-    private fun toggleItem(itemId: Long) {
+    private fun deleteItem(itemId: Long, date: String) {
         viewModelScope.launch {
-            try {
-                repository.toggleItem(itemId)
-                fetchRoutines()
-            } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = e.message) }
-            }
+            try { repository.deleteItem(itemId, date) }
+            catch (e: Exception) { _uiState.update { it.copy(errorMessage = "항목 삭제 실패: ${e.message}") } }
         }
     }
 }

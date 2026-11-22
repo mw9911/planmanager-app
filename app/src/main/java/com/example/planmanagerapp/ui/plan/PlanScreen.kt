@@ -26,13 +26,16 @@ import java.time.ZoneId
 @Composable
 fun PlanScreen(
     viewModel: PlanViewModel = hiltViewModel(),
-    onNavigateToCalendar: () -> Unit // 💡 캘린더 화면 이동 콜백 추가
+    onNavigateToCalendar: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
     // 계획 추가 다이얼로그 상태 관리
     var showAddDialog by remember { mutableStateOf(false) }
     var newPlanTitle by remember { mutableStateOf("") }
+
+    // 💡 1. 삭제 확인 다이얼로그 상태 관리 추가
+    var planToDelete by remember { mutableStateOf<Long?>(null) }
 
     // 날짜 선택기(DatePicker) 상태 관리
     var showDatePicker by remember { mutableStateOf(false) }
@@ -78,14 +81,38 @@ fun PlanScreen(
                     PlanItem(
                         plan = plan,
                         onToggle = { viewModel.handleIntent(PlanIntent.TogglePlan(plan.id, plan.isCompleted)) },
-                        onDelete = { viewModel.handleIntent(PlanIntent.DeletePlan(plan.id)) }
+                        // 💡 2. 즉시 삭제 대신 다이얼로그 상태(planToDelete)에 해당 계획 ID 저장
+                        onDelete = { planToDelete = plan.id }
                     )
                 }
             }
         }
     }
 
-    // 💡 계획 생성 다이얼로그
+    // 💡 3. 삭제 확인 다이얼로그 UI
+    if (planToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { planToDelete = null },
+            title = { Text("계획 삭제") },
+            text = { Text("해당 계획을 정말 삭제하시겠습니까?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.handleIntent(PlanIntent.DeletePlan(planToDelete!!))
+                        planToDelete = null // 닫기
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("삭제")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { planToDelete = null }) { Text("취소") }
+            }
+        )
+    }
+
+    // (기존) 계획 생성 다이얼로그
     if (showAddDialog) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
@@ -103,7 +130,7 @@ fun PlanScreen(
                         value = selectedDate,
                         onValueChange = {},
                         label = { Text("날짜 선택") },
-                        enabled = false, // 직접 입력 방지
+                        enabled = false,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { showDatePicker = true },
@@ -130,7 +157,7 @@ fun PlanScreen(
         )
     }
 
-    // 💡 실제 달력 팝업
+    // (기존) 실제 달력 팝업
     if (showDatePicker) {
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -169,7 +196,6 @@ fun PlanItem(
                         text = plan.title,
                         textDecoration = if (plan.isCompleted) TextDecoration.LineThrough else TextDecoration.None
                     )
-                    // 💡 전체 목록이므로 날짜를 표시해줍니다.
                     Text(text = plan.planDate, fontSize = 12.sp, color = Color.Gray)
                 }
             }

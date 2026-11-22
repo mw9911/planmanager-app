@@ -40,7 +40,7 @@ class RoutineSyncWorker(
 
             // 💡 수정됨: 구버전 syncRoutines 대신, 오늘 날짜 기준 최신 레코드를 DB에 동기화
             val today = LocalDate.now().toString()
-            repository.getRoutineGroups(today)
+            repository.fetchAndCacheRoutines(today)
 
             Result.success()
         } catch (e: Exception) {
